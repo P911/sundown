@@ -19,8 +19,10 @@ DEPDIR=depends
 # "Machine-dependant" options
 #MFLAGS=-fPIC
 
-CFLAGS=-c -g -O3 -fPIC -Wall -Werror -Wsign-compare -Isrc -Ihtml
-LDFLAGS=-g -O3 -Wall -Werror 
+#CFLAGS=-c -g -O3 -fPIC -Wall -Werror -Wsign-compare -Isrc -Ihtml
+#LDFLAGS=-g -O3 -Wall -Werror 
+CFLAGS=-c -g -fPIC -Wall -Werror -Wsign-compare -Isrc -Ihtml
+LDFLAGS=-g -Wall -Werror 
 CC=gcc
 
 
@@ -49,6 +51,9 @@ libsundown.so.1: $(SUNDOWN_SRC)
 # executables
 
 sundown:	examples/sundown.o $(SUNDOWN_SRC)
+	$(CC) $(LDFLAGS) $^ -o $@
+
+sdoc:	examples/sdoc.o $(SUNDOWN_SRC)
 	$(CC) $(LDFLAGS) $^ -o $@
 
 smartypants: examples/smartypants.o $(SUNDOWN_SRC)
