@@ -220,7 +220,69 @@ rndr_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 	if (ob->size)
 		bufputc(ob, '\n');
 
-	if (options->flags & HTML_TOC)
+	if (text && (options->flags & HTML_H_ATTRIBUTES)) {
+
+		bufprintf(ob, "<h%d", level);
+
+		unsigned int i, txt_len = text->size;
+		unsigned int cls_start = 0, cls_len = 0;
+		unsigned int id_start = 0, id_len = 0;
+		for (i = 0; i < text->size; i++) {
+			// check for "{" (header attribs) in text
+			// text: "xxxxyyyyzzz {.ccccc #iii}
+			if (text->data[i] == '{') {
+				break;
+			}
+		}
+		txt_len = i;
+		while (i + 1 < text->size) {
+			/* skip space */
+			if (text->data[i + 1] == ' ') { ++i; continue; }
+			/* check for class name */
+			if (text->data[i + 1] == '.') {
+				cls_start = i + 2;
+				for (i = cls_start; i < text->size; i++) {
+					if (text->data[i] == '}') break;
+					if (text->data[i] == '.') break;
+					if (text->data[i] == ' ') break;
+					if (text->data[i] == '#') break;
+				}
+				cls_len = i - cls_start;
+				/* add class-attribut */
+				bufput(ob, " class=\"", 8);
+				bufput(ob, text->data + cls_start, cls_len);
+				bufput(ob, "\"", 1);
+				continue;
+			}
+			/* check for id */
+			if (text->data[i + 1] == '#') {
+				id_start = i + 2;
+				for (i = id_start; i < text->size; i++) {
+					if (text->data[i] == '}') break;
+					if (text->data[i] == '.') break;
+					if (text->data[i] == ' ') break;
+					if (text->data[i] == '#') break;
+				}
+				id_len = i - id_start;
+				// add id-attribute to outbuf
+				bufput(ob, " id=\"", 5);
+				bufput(ob, text->data + id_start, id_len);
+				bufput(ob, "\"", 1);
+				continue;
+			}
+			break;
+		}
+		/* if not id-attribut was found, create auto-id */
+		if (id_start == 0 && (options->flags & HTML_TOC)) {
+			bufprintf(ob, " id=\"toc_%d\">", options->toc_data.header_count++);
+		}
+		bufput(ob, ">", 1);
+		bufput(ob, text->data, txt_len);
+		bufprintf(ob, "</h%d>\n", level);
+		return;
+	}
+
+	else if (options->flags & HTML_TOC)
 		bufprintf(ob, "<h%d id=\"toc_%d\">", level, options->toc_data.header_count++);
 	else
 		bufprintf(ob, "<h%d>", level);
