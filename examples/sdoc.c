@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 
 /* bytes to read per chung */
 #define READ_UNIT 1024
@@ -30,33 +31,13 @@
     * index of the current position in the copy buffer
 */
 unsigned int
-add_id(struct buf *cb, unsigned int idx, struct buf *in, unsigned int f) {
-	unsigned int i;
-	f++; /* skip '&' or '%' */
-	/* search forward for the end of the identifier */
-	for (i = f; i < in->size; i++) {
-		int ch = in->data[i];
-		if (!isdigit(ch) && !isalpha(ch) && ch != '_') {
-			break;
-		}
-	}
+add_attrib(struct buf *cb, unsigned int idx, const char *ty,
+	struct buf *in, unsigned int i_start, unsigned int i_len) {
 
-	char a_id[] = "<a id=";
-	char a_end[] = "></a>";
-	memcpy(cb->data + idx, a_id, sizeof a_id);
-	idx += sizeof a_id - 1;
-	memcpy(cb->data + idx, in->data + f, i - f);
-	idx += i - f;
-	memcpy(cb->data + idx, a_end, sizeof a_end);
-	idx += sizeof a_end - 1;
-
-	/*
-	strcpy(fn->data + fidx, "[");
-	memcpy(fn->data + fidx, in->data + f, i - f);
-	strcpy(fn->data + fidx, "]: #");
-	memcpy(fn->data + fidx, in->data + f, i - f);
-	strcpy(fn->data + fidx, "\n");
-	*/
+	memcpy(cb->data + idx, "{", 1); idx++;
+	memcpy(cb->data + idx, ty, strlen(ty)); idx += strlen(ty);
+	memcpy(cb->data + idx, in->data + i_start, i_len); idx += i_len;
+	memcpy(cb->data + idx, "}", 1); idx++;
 	return idx;
 }
 
@@ -83,11 +64,36 @@ static int read_files(struct buf *ib, int argc, char **argv) {
 	return 0;
 }
 
+static int put_char(struct buf *cb, int idx_out, int ch) {
+	if (ch < 128) {
+		assert((unsigned int) idx_out < cb->asize);
+		cb->data[idx_out++] = ch;
+	}
+	else {
+		/* guess encodung (german) */
+		/* if german umlauts -> ok, else: convert to utf-8 */
+		switch (ch) {
+		/*Aa*/case 196: case 228:
+		/*Oo*/ case 214: case 246:
+		/*Uu*/ case 220: case 252:
+		/*sz*/ case 223:
+			/* seems to by latin-1 */
+			cb->data[idx_out++] = 0xc2 + (ch>0xbf);
+			cb->data[idx_out++] = (ch&0x3f) + 0x80;
+			break;
+		default: /* hopefully already Utf-8 */
+			cb->data[idx_out++] = ch;
+			break;
+		}
+	}
+	return idx_out;
+}
+
 // API comments: starting with /** and ending with */ or **/
 // copy parts between comments
 static void copy_comments(struct buf *cb, struct buf *ib) {
 	unsigned int i, idx_out = 0;
-	int api_comment_block = 0, api_pound = 0;
+	int api_comment_block = 0, api_pound = 0, is_header = 0;
 	for (i = 0; i < ib->size; i++) {
 		int ch = ib->data[i];
 		// API comment block starts
@@ -110,48 +116,62 @@ static void copy_comments(struct buf *cb, struct buf *ib) {
 			// if this is a api comment: check if this is
 			// a level 3 heading
 			if (ch == '#') ++api_pound;
+
 			if (api_pound == 3 && ch != '#') {
-				// search forward for '%' or '&'
-				unsigned int k;
-				for (k = i; k < ib->size; k++) {
-					if (ib->data[k] == '\n') break;
+				is_header = 3;
+			}
+			if (is_header == 3 && ch == '#') {
+				// 1. remove 3 '#'
+				i += 2;
+				// 2. add {#<name>}
+				bufgrow(cb, cb->asize + 100);
+				unsigned int k, l;
+				// 2a. skip back to '&' or '%'
+				for (k = i; k >= 0; k--) {
 					if (ib->data[k] == '&') break;
 					if (ib->data[k] == '%') break;
+					if (ib->data[k] == '\n') break;
 				}
-				// if '%' or '&' is found:
-				// add HTML anchor
-				if (k < ib->size && ib->data[k] != '\n') {
-					cb->size = idx_out;
-					bufgrow(cb, cb->size + i-k + 100);
-					idx_out = add_id(cb, idx_out, ib, k);
+				// 2b. find end of identifier
+				for (l = k + 1; l < i; l++) {
+					int ch = ib->data[l];
+					if (!isdigit(ch) && !isalpha(ch) && ch != '_') {
+						break;
+					}
+				}
+				// 2c. add string to out buffer
+				if (ib->data[k] == '&' || ib->data[k] == '%') {
+					idx_out = add_attrib(cb, idx_out, "#",
+						ib, k+1, l-k);
 				}
 			}
-			// if this is an api comment: add text as
-			// class attribute
+
 			if (api_pound == 4 && ch != '#') {
-				/* add {.<text>} as class attribut */
+				is_header = 4;
 			}
-			if (api_pound && ch != '#') api_pound = 0;
-			if (ch < 128) {
-				cb->data[idx_out++] = ch;
-			}
-			else {
-				/* guess encodung (german) */
-				/* if german umlauts -> ok, else: convert to utf-8 */
-				switch (ch) {
-				/*Aa*/case 196: case 228:
-				/*Oo*/ case 214: case 246:
-				/*Uu*/ case 220: case 252:
-				/*sz*/ case 223:
-					/* seems to by latin-1 */
-					cb->data[idx_out++] = 0xc2 + (ch>0xbf);
-					cb->data[idx_out++] = (ch&0x3f) + 0x80;
-					break;
-				default: /* hopefully already Utf-8 */
-					cb->data[idx_out++] = ch;
-					break;
+			if (is_header == 4 && ch == '#') {
+				// 1. add {.<header>}
+				bufgrow(cb, cb->asize + 100);
+				unsigned int k;
+				// 1a. skip back to '#'
+				for (k = i - 1; k >= 0; k--) {
+					if (ib->data[k] == '#') break;
+					if (ib->data[k] == '\n') break;
 				}
+				// 1c. add string to out buffer
+				if (ib->data[k] == '#') {
+					idx_out = add_attrib(cb, idx_out, ".",
+						ib, k+1, i-k-1);
+				}
+				// 2. remove 4 '#'
+				i += 3;
 			}
+
+			if (api_pound && ch != '#') api_pound = 0;
+			if (ch == '\n') is_header = 0;
+
+			idx_out = put_char(cb, idx_out, ch);
+
 		}
 	}
 	cb->size = idx_out;
@@ -197,6 +217,7 @@ doc_api(struct buf *ib)
 
 	/* cleanup */
 	bufrelease(ob);
+	bufrelease(cb);
 
 	return (ret < 0) ? -1 : 0;
 }
