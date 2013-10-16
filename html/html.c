@@ -282,7 +282,11 @@ rndr_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 		}
 		/* end header start tag */
 		bufput(ob, ">", 1);
-		/* add header (but without attribute part */
+		/* remove whitespace from the end of the text */
+		while (txt_len > 0 && isspace(text->data[txt_len - 1])) {
+			--txt_len;
+		}
+		/* add header (but without attribute part) */
 		bufput(ob, text->data, txt_len);
 		/* print header end tag */
 		bufprintf(ob, "</h%d>\n", level);
