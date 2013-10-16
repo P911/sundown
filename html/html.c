@@ -220,65 +220,73 @@ rndr_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 	if (ob->size)
 		bufputc(ob, '\n');
 
+	/* Handling of Header-Attributes ( ... {#iiiiddd .cccls}).
+	   The Handling of header attributes is hacked in here:
+	   The original sundown parser does not implement the attribute
+	   markdown extension. So the "{...}" notation is part
+	   of the "text" variable. (note: The notation ### ... ### {...}
+	   is not supported at all; only The ### ... {...} variant.)
+	*/
 	if (text && (options->flags & HTML_H_ATTRIBUTES)) {
 
+		/* header tag */
 		bufprintf(ob, "<h%d", level);
 
 		unsigned int i, txt_len = text->size;
-		unsigned int cls_start = 0, cls_len = 0;
-		unsigned int id_start = 0, id_len = 0;
+		unsigned int attr_start = 0, attr_len = 0, id_attr = 0;
+		/* look for the start of an attribute block */
 		for (i = 0; i < text->size; i++) {
-			// check for "{" (header attribs) in text
 			// text: "xxxxyyyyzzz {.ccccc #iii}
 			if (text->data[i] == '{') {
 				break;
 			}
 		}
 		txt_len = i;
+		/* if an attribut block found: add all attributes
+		  (class or id attributes) 
+		   note1: there is no check if there is only one
+		   id-attribut
+		   note2: only the first word is use, that is,
+		   in (.aa bb), "bb" will be ignored
+		*/
 		while (i + 1 < text->size) {
 			/* skip space */
 			if (text->data[i + 1] == ' ') { ++i; continue; }
-			/* check for class name */
-			if (text->data[i + 1] == '.') {
-				cls_start = i + 2;
-				for (i = cls_start; i < text->size; i++) {
+			/* check for class name / id */
+			if (text->data[i + 1] == '.' || text->data[i + 1] == '#') {
+				attr_start = i + 2;
+				for (i = attr_start; i < text->size; i++) {
 					if (text->data[i] == '}') break;
 					if (text->data[i] == '.') break;
 					if (text->data[i] == ' ') break;
 					if (text->data[i] == '#') break;
 				}
-				cls_len = i - cls_start;
+				attr_len = i - attr_start;
 				/* add class-attribut */
-				bufput(ob, " class=\"", 8);
-				bufput(ob, text->data + cls_start, cls_len);
-				bufput(ob, "\"", 1);
-				continue;
-			}
-			/* check for id */
-			if (text->data[i + 1] == '#') {
-				id_start = i + 2;
-				for (i = id_start; i < text->size; i++) {
-					if (text->data[i] == '}') break;
-					if (text->data[i] == '.') break;
-					if (text->data[i] == ' ') break;
-					if (text->data[i] == '#') break;
+				if (text->data[attr_start - 1] == '#') {
+					bufputs(ob, " id=\"");
+					id_attr++;
 				}
-				id_len = i - id_start;
-				// add id-attribute to outbuf
-				bufput(ob, " id=\"", 5);
-				bufput(ob, text->data + id_start, id_len);
+				else {
+					bufputs(ob, " class=\"");
+				}
+				bufput(ob, text->data + attr_start, attr_len);
 				bufput(ob, "\"", 1);
 				continue;
 			}
 			break;
 		}
 		/* if not id-attribut was found, create auto-id */
-		if (id_start == 0 && (options->flags & HTML_TOC)) {
+		if (id_attr == 0 && (options->flags & HTML_TOC)) {
 			bufprintf(ob, " id=\"toc_%d\">", options->toc_data.header_count++);
 		}
+		/* end header start tag */
 		bufput(ob, ">", 1);
+		/* add header (but without attribute part */
 		bufput(ob, text->data, txt_len);
+		/* print header end tag */
 		bufprintf(ob, "</h%d>\n", level);
+		/* return: avoid the text-print below */
 		return;
 	}
 
