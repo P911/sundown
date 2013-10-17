@@ -1,0 +1,42 @@
+
+h2 {
+	color: #f3f3f3
+}
+
+h3 {
+	font-family: 'Trebuchet MS',sans-serif;
+	background-color: rgb(242, 242, 242);
+	font-weight: normal;
+	color: rgb(32, 67, 92);
+	border-bottom: 1px solid rgb(204, 204, 204);
+	margin: 20px -20px 10px;
+	padding: 3px 25px;
+}
+
+h4 {
+	color: rgb(204, 51, 63);
+}
+
+h4.Parameters + ul, h4.Parameters + ul ul {
+	list-style-type: none;
+	padding: 0;
+	margin: 0;
+}
+h4.Parameters + ul li {
+	font-style: italic;
+	margin: 10px 0 0 0 ;
+}
+h4.Parameters + ul li ul li {
+	padding: 0px 10px;
+	font-weight: normal;
+	font-style: normal;
+	margin: 0;
+}
+
+h4.Beispiel + pre {
+	border-left: 6px solid rgb(133, 156, 230);
+	padding: 10px 10px 10px 15px;
+	margin: 0px 0px 20px;
+	background: none repeat scroll 0% 0% rgb(238, 238, 238);
+	font-family: sans-serif;
+}
