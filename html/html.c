@@ -598,7 +598,37 @@ toc_h_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 	struct html_renderopt *options = opaque;
 	if (!text) return;
 
-	bufprintf(ob, "<h%d>", level);
+	/* set the level offset if this is the first header
+	 * we're parsing for the document */
+	if (options->toc_data.current_level == 0) {
+		options->toc_data.level_offset = level - 1;
+	}
+	unsigned int offl = options->toc_data.level_offset;
+	level -= offl;
+
+	if (level > options->toc_data.current_level) {
+		while (level > options->toc_data.current_level) {
+			options->toc_data.current_level++;
+			bufprintf(ob, "<ul class=\"l%d\">\n<li class=\"l%d\">\n",
+				options->toc_data.current_level + offl,
+				options->toc_data.current_level + offl
+			);
+		}
+	} else if (level < options->toc_data.current_level) {
+		bufputs(ob, "</li>\n");
+		while (level < options->toc_data.current_level) {
+			options->toc_data.current_level--;
+			bufputs(ob, "</ul>\n</li>\n");
+		}
+		bufprintf(ob,"<li class=\"l%d\">\n",
+			options->toc_data.current_level + offl
+		);
+	} else {
+		bufputs(ob, "</li>\n");
+		bufprintf(ob,"<li class=\"l%d\">\n",
+			options->toc_data.current_level + offl
+		);
+	}
 
 	unsigned int txt_len, id_attr;
 	handle_h_attributes(text, &txt_len, &id_attr, print_href_id, NULL, ob);
@@ -606,9 +636,7 @@ toc_h_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 		bufprintf(ob, "<a href=\"#toc_%d\">", options->toc_data.header_count++);
 	}
 	escape_html(ob, text->data, txt_len);
-	bufputs(ob, "</a>\n");
-
-	bufprintf(ob, "</h>\n");
+	bufputs(ob, "</a>");
 }
 
 static void

@@ -1,10 +1,90 @@
 
-h2 {
-	color: #f3f3f3
+/* Navigation wird links oben dargestellt */
+div#Nav {
+	position: absolute;
+	top: 1em;
+	left: 1%;
+	width: 25%;
+	color: black;
+	/* z-index: 2; */ /* eingeblendete Unterabschnitte űber Std.text */
 }
 
-h3 {
-	font-family: 'Trebuchet MS',sans-serif;
+/* Anchor-Elemente nicht in Link-Farben etc. zeigen. Rahmen anzeigen */
+#Nav a {
+	display: block;
+	color: inherit;
+	background-color: inherit;
+	text-decoration: inherit;
+	/* white-space: nowrap; */
+	margin: 0px;
+	padding: 1px 4px;
+	border-style: solid;
+	border-width: 1px;
+	border-color: rgb(204, 204, 204)
+}
+
+/* "Zeige-auf"-Effekt */
+#Nav a:hover {
+	background-color: rgb(221, 221, 221);
+}
+
+/* Keine Listen-Marker, Eltern-Element voll ausfűllen */
+ul {
+	list-style: none;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+}
+
+#Nav li.l1 {
+	font-weight: bold;
+	background-color: black;
+	color: white;
+}
+
+#Nav li.l2 {
+	background-color: rgb(100, 100, 100);
+	color: white;
+	font-weight: bold;
+}
+#Nav li.l3, #Nav li.l4 {
+	background-color: #eee;
+	color: black;
+	font-weight: normal;
+}
+
+/* l3 elemente als "nächste positionierte Vorgänger"
+   von l4 elementen markierten */
+div#Nav li.l3, div#Nav li.l3:hover {
+	position: relative;
+}
+/* l4 elemente neben l3 Elementen platzieren, zunächsten nicht anzeigen */
+div#Nav ul.l4 {
+	position: absolute;
+	top: 0;
+	left: 100.1%;
+	display: none;
+}
+
+/* l4 Elemente dann anzeigen, wenn l3 Eltern-Element gewählt ist */
+#Nav li.l3:hover ul.l4 {
+	display:block;
+}
+
+/* Platz fűr Navigation lassen */
+div#Doc {
+	margin-left: 30%;
+}
+
+#Doc h2, #Doc h1 {
+	color: rgb(32, 67, 92);
+	border-bottom: 1px dotted rgb(204, 204, 204);
+	margin: 20px -20px 10px;
+	padding: 3px 0px;
+}
+
+#Doc h3 {
+	font-family: 'Trebuchet MS', sans-serif;
 	background-color: rgb(242, 242, 242);
 	font-weight: normal;
 	color: rgb(32, 67, 92);
@@ -13,30 +93,30 @@ h3 {
 	padding: 3px 25px;
 }
 
-h4 {
+#Doc h4 {
 	color: rgb(204, 51, 63);
 }
 
-h4.Parameters + ul, h4.Parameters + ul ul {
+#Doc h4.Parameter + ul, #Doc h4.Parameter + ul ul {
 	list-style-type: none;
 	padding: 0;
 	margin: 0;
 }
-h4.Parameters + ul li {
+#Doc h4.Parameter + ul li {
 	font-style: italic;
 	margin: 10px 0 0 0 ;
 }
-h4.Parameters + ul li ul li {
+#Doc h4.Parameter + ul li ul li {
 	padding: 0px 10px;
 	font-weight: normal;
 	font-style: normal;
 	margin: 0;
 }
 
-h4.Beispiel + pre {
-	border-left: 6px solid rgb(133, 156, 230);
+#Doc h4.Beispiel + pre {
+	border-left: 6px solid rgb(32, 67, 92);
 	padding: 10px 10px 10px 15px;
 	margin: 0px 0px 20px;
-	background: none repeat scroll 0% 0% rgb(238, 238, 238);
+	background: none repeat scroll 0% 0% rgb(250, 250, 235);
 	font-family: sans-serif;
 }

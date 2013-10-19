@@ -481,9 +481,9 @@ doc_api(struct buf *ib, FILE *out)
 	sd_markdown_render(ob, cb->data, cb->size, markdown);
 	sd_markdown_free(markdown);
 
-	fprintf(out, "<div id=\"Content\">");
+	fprintf(out, "<div id=\"Doc\">\n");
 	ret = fwrite(ob->data, 1, ob->size, out);
-	fprintf(out, "</div>");
+	fprintf(out, "</div>\n");
 
 	/* TOC */
 	bufreset(ob);
@@ -497,9 +497,9 @@ doc_api(struct buf *ib, FILE *out)
 	sd_markdown_render(ob, cb->data, cb->size, markdown);
 	sd_markdown_free(markdown);
 
-	fprintf(out, "<div id=\"TOC\">");
+	fprintf(out, "<div id=\"Nav\">\n");
 	ret = fwrite(ob->data, 1, ob->size, out);
-	fprintf(out, "</div>");
+	fprintf(out, "</div>\n");
 
 	/* cleanup */
 	bufrelease(ob);
