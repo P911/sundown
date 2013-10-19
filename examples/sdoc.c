@@ -463,7 +463,15 @@ doc_api(struct buf *ib, FILE *out)
 	/* performing markdown parsing */
 	ob = bufnew(OUTPUT_UNIT);
 
-	sdhtml_renderer(&callbacks, &options, HTML_HARD_WRAP|HTML_H_ATTRIBUTES);
+	/* HTML-header */
+	fprintf(out, "<!DOCTYPE html>\n");
+	fprintf(out, "<html><meta charset='utf-8'>\n");
+	fprintf(out, "<head><link href=\"apidoc.css\" "
+	                "rel=\"stylesheet\" type=\"text/css\">");
+	fprintf(out, "</head><body>");
+
+	/* contents */
+	sdhtml_renderer(&callbacks, &options, HTML_HARD_WRAP|HTML_H_ATTRIBUTES|HTML_TOC);
 	markdown = sd_markdown_new(
 		MKDEXT_TABLES /* support for tables */
 		| MKDEXT_FENCED_CODE /* allow ~~~ instead of ``` */
@@ -473,12 +481,24 @@ doc_api(struct buf *ib, FILE *out)
 	sd_markdown_render(ob, cb->data, cb->size, markdown);
 	sd_markdown_free(markdown);
 
-	/* HTML-header */
-	fprintf(out, "<html><meta charset='utf-8'>\n");
-	fprintf(out, "<head><link href=\"apidoc.css\" "
-	                "rel=\"stylesheet\" type=\"text/css\">");
-	fprintf(out, "</head><body>");
 	fprintf(out, "<div id=\"Content\">");
+	ret = fwrite(ob->data, 1, ob->size, out);
+	fprintf(out, "</div>");
+
+	/* TOC */
+	bufreset(ob);
+	sdhtml_toc_renderer(&callbacks, &options);
+	options.flags |= HTML_H_ATTRIBUTES;
+	markdown = sd_markdown_new(
+		MKDEXT_TABLES /* support for tables */
+		| MKDEXT_FENCED_CODE /* allow ~~~ instead of ``` */
+		| MKDEXT_NO_INTRA_EMPHASIS /* no emphasis in identifier with '_' */
+		, 16, &callbacks, &options);
+
+	sd_markdown_render(ob, cb->data, cb->size, markdown);
+	sd_markdown_free(markdown);
+
+	fprintf(out, "<div id=\"TOC\">");
 	ret = fwrite(ob->data, 1, ob->size, out);
 	fprintf(out, "</div>");
 

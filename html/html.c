@@ -212,6 +212,82 @@ rndr_linebreak(struct buf *ob, void *opaque)
 	return 1;
 }
 
+typedef void (*print_fn)(struct buf *ob, const uint8_t *txt, unsigned int);
+
+static void print_id(struct buf *ob, const uint8_t *txt, unsigned int len) {
+	bufputs(ob, " id=\"");
+	bufput(ob, txt, len);
+	bufputs(ob, "\"");
+}
+
+static void
+print_href_id(struct buf *ob, const uint8_t *txt, unsigned int len) {
+	bufputs(ob, "<a href=\"#");
+	bufput(ob, txt, len);
+	bufputs(ob, "\">");
+}
+
+static void print_class(struct buf *ob, const uint8_t *txt, unsigned int len) {
+	bufputs(ob, " class=\"");
+	bufput(ob, txt, len);
+	bufputs(ob, "\"");
+}
+
+static void
+handle_h_attributes(const struct buf *text,
+	unsigned int *txtlen, unsigned int *idattr,
+	print_fn p_id, print_fn p_class, struct buf *ob) {
+
+	unsigned int i, txt_len = text->size;
+	unsigned int attr_start = 0, attr_len = 0, id_attr = 0;
+	/* look for the start of an attribute block */
+	for (i = 0; i < text->size; i++) {
+		// text: "xxxxyyyyzzz {.ccccc #iii}
+		if (text->data[i] == '{') {
+			break;
+		}
+	}
+	txt_len = i;
+	/* if an attribut block found: add all attributes
+	  (class or id attributes) 
+	   note1: there is no check if there is only one
+	   id-attribut
+	   note2: only the first word is use, that is,
+	   in (.aa bb), "bb" will be ignored
+	*/
+	while (i + 1 < text->size) {
+		/* skip space */
+		if (text->data[i + 1] == ' ') { ++i; continue; }
+		/* check for class name / id */
+		if (text->data[i + 1] == '.' || text->data[i + 1] == '#') {
+			attr_start = i + 2;
+			for (i = attr_start; i < text->size; i++) {
+				if (text->data[i] == '}') break;
+				if (text->data[i] == '.') break;
+				if (text->data[i] == ' ') break;
+				if (text->data[i] == '#') break;
+			}
+			attr_len = i - attr_start;
+			/* add class-attribut */
+			if (text->data[attr_start - 1] == '#') {
+				if (p_id) p_id(ob, text->data + attr_start, attr_len);
+				id_attr++;
+			}
+			else {
+				if (p_class) p_class(ob, text->data + attr_start, attr_len);
+			}
+			continue;
+		}
+		break;
+	}
+	/* remove whitespace from the end of the text */
+	while (txt_len > 0 && isspace(text->data[txt_len - 1])) {
+		--txt_len;
+	}
+	if (txtlen) *txtlen = txt_len;
+	if (idattr) *idattr = id_attr;
+}
+
 static void
 rndr_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 {
@@ -232,60 +308,16 @@ rndr_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 		/* header tag */
 		bufprintf(ob, "<h%d", level);
 
-		unsigned int i, txt_len = text->size;
-		unsigned int attr_start = 0, attr_len = 0, id_attr = 0;
-		/* look for the start of an attribute block */
-		for (i = 0; i < text->size; i++) {
-			// text: "xxxxyyyyzzz {.ccccc #iii}
-			if (text->data[i] == '{') {
-				break;
-			}
-		}
-		txt_len = i;
-		/* if an attribut block found: add all attributes
-		  (class or id attributes) 
-		   note1: there is no check if there is only one
-		   id-attribut
-		   note2: only the first word is use, that is,
-		   in (.aa bb), "bb" will be ignored
-		*/
-		while (i + 1 < text->size) {
-			/* skip space */
-			if (text->data[i + 1] == ' ') { ++i; continue; }
-			/* check for class name / id */
-			if (text->data[i + 1] == '.' || text->data[i + 1] == '#') {
-				attr_start = i + 2;
-				for (i = attr_start; i < text->size; i++) {
-					if (text->data[i] == '}') break;
-					if (text->data[i] == '.') break;
-					if (text->data[i] == ' ') break;
-					if (text->data[i] == '#') break;
-				}
-				attr_len = i - attr_start;
-				/* add class-attribut */
-				if (text->data[attr_start - 1] == '#') {
-					bufputs(ob, " id=\"");
-					id_attr++;
-				}
-				else {
-					bufputs(ob, " class=\"");
-				}
-				bufput(ob, text->data + attr_start, attr_len);
-				bufput(ob, "\"", 1);
-				continue;
-			}
-			break;
-		}
+		unsigned int txt_len, id_attr;
+		handle_h_attributes(text, &txt_len, &id_attr, print_id, print_class, ob);
+
 		/* if not id-attribut was found, create auto-id */
 		if (id_attr == 0 && (options->flags & HTML_TOC)) {
-			bufprintf(ob, " id=\"toc_%d\">", options->toc_data.header_count++);
+			bufprintf(ob, " id=\"toc_%d\"", options->toc_data.header_count++);
 		}
+
 		/* end header start tag */
 		bufput(ob, ">", 1);
-		/* remove whitespace from the end of the text */
-		while (txt_len > 0 && isspace(text->data[txt_len - 1])) {
-			--txt_len;
-		}
 		/* add header (but without attribute part) */
 		bufput(ob, text->data, txt_len);
 		/* print header end tag */
@@ -588,9 +620,19 @@ toc_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 		BUFPUTSL(ob,"</li>\n<li>\n");
 	}
 
-	bufprintf(ob, "<a href=\"#toc_%d\">", options->toc_data.header_count++);
-	if (text)
-		escape_html(ob, text->data, text->size);
+	if (text && (options->flags & HTML_H_ATTRIBUTES)) {
+		unsigned int txt_len, id_attr;
+		handle_h_attributes(text, &txt_len, &id_attr, print_href_id, NULL, ob);
+		if (!id_attr) {
+			bufprintf(ob, "<a href=\"#toc_%d\">", options->toc_data.header_count++);
+		}
+		escape_html(ob, text->data, txt_len);
+	}
+	else {
+		bufprintf(ob, "<a href=\"#toc_%d\">", options->toc_data.header_count++);
+		if (text)
+			escape_html(ob, text->data, text->size);
+	}
 	BUFPUTSL(ob, "</a>\n");
 }
 
