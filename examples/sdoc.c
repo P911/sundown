@@ -487,8 +487,7 @@ doc_api(struct buf *ib, FILE *out)
 
 	/* TOC */
 	bufreset(ob);
-	sdhtml_toc_renderer(&callbacks, &options);
-	options.flags |= HTML_H_ATTRIBUTES;
+	sdhtml_toc_h_renderer(&callbacks, &options, HTML_H_ATTRIBUTES);
 	markdown = sd_markdown_new(
 		MKDEXT_TABLES /* support for tables */
 		| MKDEXT_FENCED_CODE /* allow ~~~ instead of ``` */

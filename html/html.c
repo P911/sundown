@@ -593,6 +593,25 @@ rndr_normal_text(struct buf *ob, const struct buf *text, void *opaque)
 }
 
 static void
+toc_h_header(struct buf *ob, const struct buf *text, int level, void *opaque)
+{
+	struct html_renderopt *options = opaque;
+	if (!text) return;
+
+	bufprintf(ob, "<h%d>", level);
+
+	unsigned int txt_len, id_attr;
+	handle_h_attributes(text, &txt_len, &id_attr, print_href_id, NULL, ob);
+	if (!id_attr) {
+		bufprintf(ob, "<a href=\"#toc_%d\">", options->toc_data.header_count++);
+	}
+	escape_html(ob, text->data, txt_len);
+	bufputs(ob, "</a>\n");
+
+	bufprintf(ob, "</h>\n");
+}
+
+static void
 toc_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 {
 	struct html_renderopt *options = opaque;
@@ -620,19 +639,10 @@ toc_header(struct buf *ob, const struct buf *text, int level, void *opaque)
 		BUFPUTSL(ob,"</li>\n<li>\n");
 	}
 
-	if (text && (options->flags & HTML_H_ATTRIBUTES)) {
-		unsigned int txt_len, id_attr;
-		handle_h_attributes(text, &txt_len, &id_attr, print_href_id, NULL, ob);
-		if (!id_attr) {
-			bufprintf(ob, "<a href=\"#toc_%d\">", options->toc_data.header_count++);
-		}
-		escape_html(ob, text->data, txt_len);
-	}
-	else {
-		bufprintf(ob, "<a href=\"#toc_%d\">", options->toc_data.header_count++);
-		if (text)
-			escape_html(ob, text->data, text->size);
-	}
+	bufprintf(ob, "<a href=\"#toc_%d\">", options->toc_data.header_count++);
+	if (text)
+		escape_html(ob, text->data, text->size);
+
 	BUFPUTSL(ob, "</a>\n");
 }
 
@@ -653,6 +663,14 @@ toc_finalize(struct buf *ob, void *opaque)
 		BUFPUTSL(ob, "</li>\n</ul>\n");
 		options->toc_data.current_level--;
 	}
+}
+
+void
+sdhtml_toc_h_renderer(struct sd_callbacks *callbacks, struct html_renderopt *options, unsigned int render_flags)
+{
+	sdhtml_toc_renderer(callbacks, options);
+	options->flags |= render_flags;
+	callbacks->header = toc_h_header;
 }
 
 void
