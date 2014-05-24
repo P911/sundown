@@ -291,6 +291,40 @@ static void put_char(struct buf *cb, int ch) {
 }
 
 /**
+### lookahead_cmttags
+
+Check if the current position (i) is the start of a API/CODE comment.
+
+#### parameters ####
+
++ buf
+  * the input buffer
++ pos 
+  * current position
++ s
+  * size of the buffer
+* cmttags
+  * list of allowed comment tags, als NULL-terminated array
+
+#### returns ####
+
+Number of characters of the matching tag or 0 if no match was found.
+**/
+static int lookahead_cmttag(const unsigned char *buf, size_t pos, size_t s,
+	char **cmttags) {
+	int ti;
+	for (ti = 0; cmttags[ti] != NULL; ti++) {
+		const char *tag = cmttags[ti];
+		int i;
+		for (i = 0; tag[i] && pos + i < s; i++) {
+			if (tag[i] != buf[pos + i]) break;
+		}
+		if (tag[i] == 0) { return i; }
+	}
+	return 0;
+}
+
+/**
 ### copy_comments ###
 
 Copy (API) comment blocks from the input buffer to the output buffer.
@@ -314,43 +348,47 @@ standardized sections (like "parameters", "returns", etc.).
   * output buffer
 + ib
   * input buffer
++ cmtstarts
+  * list of comment tags marking the start of a API/CODE comment
++ cmtends
+  * list of comment tags marking the end of a API/CODE comment
 */
-static void copy_comments(struct buf *cb, struct buf *ib) {
+static void copy_comments(struct buf *cb, struct buf *ib,
+	char **cmtstarts, char **cmtends) {
 	unsigned int i;
 	int api_comment_block = 0, api_pound = 0, is_header = 0;
 
 	/* read input char by char */
 	for (i = 0; i < ib->size; i++) {
 
-		/* read current character */
-		int ch = ib->data[i];
-
+		int taglen;
 		// check if API comment block starts
-	  	if (ch == '/' && ib->size - 2 > i) {
-	    		if (ib->data[i + 1] == '*' && ib->data[i + 2] == '*') {
-	    			api_comment_block = 1;
-				i += 3;
-				continue;
-	    		}
-	  	}
+		taglen = lookahead_cmttag(ib->data, i, ib->size, cmtstarts);
+		if (taglen > 0) {
+			api_comment_block = 1;
+			i += taglen;
+			continue;
+		}
 
 		// check if API comment block ends
-		if (ch == '*' && ib->size - 2 > i) {
-			if ((ib->data[i + 1] == '*' && ib->data[i + 2] == '/')
-				|| ib->data[i + 1] == '/') {
-				if (api_comment_block) {
-					// add newline after earch comment
-					// block to force new paragraph
-					// for markdown
-					put_char(cb, '\n');
-				}
-				api_comment_block = 0;
-				continue;
+		taglen = lookahead_cmttag(ib->data, i, ib->size, cmtends);
+		if (taglen > 0) {
+			if (api_comment_block) {
+				// add newline after each comment
+				// block to force new paragraph
+				// for markdown
+				put_char(cb, '\n');
 			}
+			api_comment_block = 0;
+			i += taglen;
+			continue;
 		}
 
 		/* if not within (api) comment block: read next char */
 		if (!api_comment_block) continue;
+
+		/* read current character */
+		int ch = ib->data[i];
 
 		/* if api comment:
 		   - check for (specially treater) headings
@@ -428,9 +466,9 @@ static void copy_comments(struct buf *cb, struct buf *ib) {
 }
 
 /**
-### doc_api ###
+### doc_std ###
 
-Process API-comments from an source files and produce HTML
+Process API/CODE-comments from an source files and produce HTML
 from the Markdown in the comments.
 
 #### parameters ####
@@ -439,13 +477,20 @@ from the Markdown in the comments.
   * input buffer
 + out
   * output file (where the HTML should be written)
++ cmtstarts
+  * list of comment start tags
++ cmtends
+  * list of comment end tags
++ cssfile
+  * name of the css file referenced in the html header
 
 #### returns ####
 
 0 on success, -1 on error
 */
 static int
-doc_api(struct buf *ib, FILE *out)
+doc_std(struct buf *ib, FILE *out, char **cmtstarts, char **cmtends,
+	const char *cssfile)
 {
 	struct buf *ob;
 	struct buf *cb;
@@ -458,7 +503,7 @@ doc_api(struct buf *ib, FILE *out)
 	// copy API comments
 	cb = bufnew(ib->size);
 	bufgrow(cb, ib->size);
-	copy_comments(cb, ib);
+	copy_comments(cb, ib, cmtstarts, cmtends);
 
 	/* performing markdown parsing */
 	ob = bufnew(OUTPUT_UNIT);
@@ -466,8 +511,9 @@ doc_api(struct buf *ib, FILE *out)
 	/* HTML-header */
 	fprintf(out, "<!DOCTYPE html>\n");
 	fprintf(out, "<html><meta charset='utf-8'>\n");
-	fprintf(out, "<head><link href=\"apidoc.css\" "
-	                "rel=\"stylesheet\" type=\"text/css\">");
+	fprintf(out, "<head><link href=\"%s\" "
+	                "rel=\"stylesheet\" type=\"text/css\">",
+			cssfile);
 	fprintf(out, "</head><body>");
 
 	/* contents */
@@ -615,18 +661,81 @@ static void docco(struct buf *ib) {
 	stack_free(&sections_doc);
 }
 
+void usage(void) {
+	fprintf(stderr, "Usage: <prog> [-api|-code|-docco]"
+			" [-cssname <filename>]"
+	                " {-cmtstart <tag>} {-cmtend <tag} {input-file}\n");
+}
+
+static void release(struct buf *ib, char **cmtstarts, char **cmtends) {
+	int i;
+	if (ib) bufrelease(ib);
+	for (i = 0; i < 5; i++) {
+		if (cmtstarts[i]) { free(cmtstarts[i]); }
+		if (cmtends[i]) { free(cmtends[i]); }
+	}
+}
+
 int
 main(int argc, char **argv)
 {
+	int i;
+	enum { DOC_STD, DOC_DOCCO } flag_doc;
+	const char *cssname = "apidoc.css";
 	if (argc < 2) {
-		fprintf(stderr, "Usage: <prog> -docco|-api {input-file}.\n");
+		usage();
 		return 1;
+	}
+	/* list of comment start and end tags, max 4 different tags */
+	int cs = 0;
+	char *cmtstarts[] = { NULL, NULL, NULL, NULL, NULL };
+	int ce = 0;
+	char *cmtends[] = { NULL, NULL, NULL, NULL, NULL };
+
+	for (i = 1; i < argc; i++) {
+		if (argv[i][0] != '-') break;
+		if (strcmp(argv[i], "-api") == 0) flag_doc = DOC_STD;
+		else if (strcmp(argv[i], "-code") == 0) flag_doc = DOC_STD;
+		else if (strcmp(argv[i], "-docco") == 0) flag_doc = DOC_DOCCO;
+		else if (strcmp(argv[i], "-cmtstart") == 0
+			&& i < argc - 1 && cs < 5) {
+			i++;
+			cmtstarts[cs] = strdup(argv[i]);
+			++cs;
+		}
+		else if (strcmp(argv[i], "-cmtend") == 0
+			&& i < argc - 1 && ce < 5) {
+			i++;
+			cmtends[ce] = strdup(argv[i]);
+			++ce;
+		}
+		else if (strcmp(argv[i], "-cssfile") == 0 && i < argc - 1) {
+			i++;
+			cssname = argv[i];
+		}
+		else {
+			fprintf(stderr, "Unknown flag %s\n", argv[i]);
+			release(NULL, cmtstarts, cmtends);
+			usage();
+			return 1;
+		}
 	}
 
 	/* arguments are the input (code) files */
-	if (argc < 3) {
+	if (i >= argc) {
 		fprintf(stderr, "Missing input files.\n");
+		release(NULL, cmtstarts, cmtends);
+		usage();
 		return 1;
+	}
+
+	/* set default comment tags if not set via command line */
+	if (cmtstarts[0] == NULL) {
+		cmtstarts[0] = strdup("/**");
+	}
+	if (cmtends[0] == NULL) {
+		cmtends[0] = strdup("**/");
+		cmtends[1] = strdup("*/");
 	}
 
 	struct buf *ib;
@@ -634,19 +743,19 @@ main(int argc, char **argv)
 	bufgrow(ib, READ_UNIT);
 
 	int r;
-	r = read_files(ib, argc - 2, argv + 2);
+	r = read_files(ib, argc - i, argv + i);
 	if (r) {
-		bufrelease(ib);
+		release(ib, cmtstarts, cmtends);
 		return r;
 	}
 
-	if (strcmp(argv[1], "-api") == 0) {
-		doc_api(ib, stdout);
-	}
-	else {
+	if (flag_doc == DOC_DOCCO) {
 		docco(ib);
 	}
-	bufrelease(ib);
+	else if (flag_doc == DOC_STD) {
+		doc_std(ib, stdout, cmtstarts, cmtends, cssname);
+	}
+	release(ib, cmtstarts, cmtends);
 	return 0;
 }
 
